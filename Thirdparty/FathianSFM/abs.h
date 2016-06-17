@@ -2,13 +2,13 @@
 // Academic License - for use in teaching, academic research, and meeting
 // course requirements at degree granting institutions only.  Not for
 // government, commercial, or other organizational use.
-// File: QuatResidueVer2_0.h
+// File: abs.h
 //
 // MATLAB Coder version            : 2.8
 // C/C++ source code generated on  : 17-Jun-2016 15:28:53
 //
-#ifndef __QUATRESIDUEVER2_0_H__
-#define __QUATRESIDUEVER2_0_H__
+#ifndef __ABS_H__
+#define __ABS_H__
 
 // Include Files
 #include <math.h>
@@ -20,13 +20,17 @@
 #include "CheckInlierVer1_0_types.h"
 
 // Function Declarations
-extern void QuatResidueVer2_0(const double m1[21], const double m2[21], const
-  double qSol[4], double *residu, double C[1225]);
+extern void b_abs(const double x[21], double y[21]);
+extern void c_abs(const double x[16], double y[16]);
+extern void d_abs(const double x[4], double y[4]);
+extern void e_abs(const double x_data[], const int x_size[1], double y_data[],
+                  int y_size[1]);
+extern void f_abs(const double x[5], double y[5]);
 
 #endif
 
 //
-// File trailer for QuatResidueVer2_0.h
+// File trailer for abs.h
 //
 // [EOF]
 //

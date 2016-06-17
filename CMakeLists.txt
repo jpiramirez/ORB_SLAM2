@@ -69,9 +69,7 @@ ${EIGEN3_LIBS}
 ${Pangolin_LIBRARIES}
 ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
 ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
-${PROJECT_SOURCE_DIR}/Thirdparty/FathianSFM/libFathianSFM.a
-${PROJECT_SOURCE_DIR}/Thirdparty/FathianSFM/libCheckInlier.a
-${PROJECT_SOURCE_DIR}/Thirdparty/FathianSFM/libQuatResidue.a
+${PROJECT_SOURCE_DIR}/Thirdparty/FathianSFM/libFathianSFM.so
 )
 
 # Build examples

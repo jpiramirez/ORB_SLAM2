@@ -25,9 +25,12 @@
 #include "Optimizer.h"
 #include "ORBmatcher.h"
 
-#include "Thirdparty/FathianSFM/FathianSFMVer3_0.h"
+#include "Thirdparty/FathianSFM/rt_nonfinite.h"
 #include "Thirdparty/FathianSFM/CheckInlierVer1_0.h"
+#include "Thirdparty/FathianSFM/FathianSFMVer3_0.h"
 #include "Thirdparty/FathianSFM/QuatResidueVer2_0.h"
+#include "Thirdparty/FathianSFM/CheckInlierVer1_0_terminate.h"
+#include "Thirdparty/FathianSFM/CheckInlierVer1_0_initialize.h"
 
 #include <thread>
 
@@ -109,7 +112,12 @@ bool Initializer::Initialize(const Frame &CurrentFrame, const vector<int> &vMatc
     double t[3];
 
     std::cout << "Running initializer!" << std::endl;
+    CheckInlierVer1_0_initialize();
     FindFathianSFM(vbMatchesInliers, Q, t, score);
+    CheckInlierVer1_0_terminate();
+
+    /////////////////////////////////////////////////////////////
+    // Uncomment to use the original SFM code from ORBSLAM
 
     // thread threadH(&Initializer::FindHomography,this,ref(vbMatchesInliersH), ref(SH), ref(H));
     // thread threadF(&Initializer::FindFundamental,this,ref(vbMatchesInliersF), ref(SF), ref(F));
@@ -126,6 +134,8 @@ bool Initializer::Initialize(const Frame &CurrentFrame, const vector<int> &vMatc
     //     return ReconstructH(vbMatchesInliersH,H,mK,R21,t21,vP3D,vbTriangulated,1.0,50);
     // else //if(pF_HF>0.6)
     //     return ReconstructF(vbMatchesInliersF,F,mK,R21,t21,vP3D,vbTriangulated,1.0,50);
+    //////////////////////////////////////////////////////////////////
+
     std::cout << "MScore: " << score << "/" << mvMatches12.size() << std::endl;
 
     bool initvar = ReconstructSFM(vbMatchesInliers, Q, t, mK, R21, t21, vP3D, vbTriangulated, 1.0, 50);
@@ -145,16 +155,8 @@ void Initializer::FindFathianSFM(vector<bool> &vbMatchesInliers, double *Q, doub
   double resBest;
   // Number of putative matches
   const int N = mvMatches12.size();
-  // const int N = vbMatchesInliers.size();
 
   cv::Mat IK = mK.inv();
-
-  // Normalize coordinates
-  vector<cv::Point2f> vPn1, vPn2;
-  // cv::Mat T1, T2;
-  // Normalize(mvKeys1,vPn1, T1);
-  // Normalize(mvKeys2,vPn2, T2);
-  // cv::Mat T2t = T2.t();
 
   // Best Results variables
   score = 0.0;
@@ -175,10 +177,6 @@ void Initializer::FindFathianSFM(vector<bool> &vbMatchesInliers, double *Q, doub
     {
       int idx = mvSets[it][j];
 
-      // vPn1i[j] = vPn1[mvMatches12[idx].first];
-      // vPn2i[j] = vPn2[mvMatches12[idx].second];
-      // vPn1i[j] = mvKeys1[mvMatches12[idx].first];
-      // vPn2i[j] = mvKeys2[mvMatches12[idx].second];
       const cv::KeyPoint &kp1 = mvKeys1[mvMatches12[idx].first];
       const cv::KeyPoint &kp2 = mvKeys2[mvMatches12[idx].second];
 
@@ -198,20 +196,6 @@ void Initializer::FindFathianSFM(vector<bool> &vbMatchesInliers, double *Q, doub
     std::cout << "RES: " << resBest << std::endl;
 
     currentScore = CheckFathianSFM(qBest, vbCurrentInliers, mSigma, m1, m2, &resBest);
-    // cv::Mat Rm(3, 3, CV_32F);
-    // cv::Mat Tm(3, 3, CV_32F);
-    // Tm.at<float>(0,0) = 0;
-    // Tm.at<float>(0,1) = -tBest[2];
-    // Tm.at<float>(0,2) = tBest[1];
-    // Tm.at<float>(1,0) = tBest[2];
-    // Tm.at<float>(1,1) = 0.0;
-    // Tm.at<float>(1,2) = -tBest[0];
-    // Tm.at<float>(2,0) = -tBest[1];
-    // Tm.at<float>(2,1) = tBest[0];
-    // Tm.at<float>(2,2) = 0.0;
-    // Initializer::quat2rot(Rm, qBest);
-    // cv::Mat E = Rm*Tm;
-    // currentScore = CheckFundamental(IK.t()*E*IK, vbMatchesInliers, mSigma);
 
     if(currentScore>score)
     {
@@ -592,12 +576,12 @@ float Initializer::CheckFathianSFM(const double *qSolBest, vector<bool> &vbMatch
 
   double minres = 1e100;
   double maxres = 0.0;
-  double threshold = (double)(*residues);
+  double threshold;
   double rs[10];
   double residu = 0.0;
-  // CheckInlierVer1_0(qSolBest, m1Orig, m2Orig, m1Orig, m2Orig, &threshold, rs);
+
   double C[1225];
-  // QuatResidueVer2_0(m1Orig, m2Orig, qSolBest, &threshold, C);
+  QuatResidueVer2_0(m1Orig, m2Orig, qSolBest, &threshold, C);
   threshold = std::abs(threshold);
 
   for(int i=0; i<N; i++)
@@ -628,9 +612,9 @@ float Initializer::CheckFathianSFM(const double *qSolBest, vector<bool> &vbMatch
 
       CheckInlierVer1_0(qSolBest, m1Orig, m2Orig, m1Check, m2Check, &residu, rs);
       residu = std::abs(residu);
-      std::cout << "Residu " << residu << std::endl;
+      // std::cout << "Residu " << residu << std::endl;
 
-      if(residu > threshold)// || threshold > 1e-6)
+      if(residu > threshold)
           bIn = false;
       else
           score += 1.0;
@@ -666,28 +650,25 @@ bool Initializer::ReconstructSFM(vector<bool> &vbMatchesInliers, double *Q, doub
             N++;
 
     cv::Mat R1(3,3,CV_32F);
-    // cv::Mat R2(3,3,CV_32F);
-    // cv::Mat R3(3,3,CV_32F);
-    // cv::Mat R4(3,3,CV_32F);
     cv::Mat t1(3, 1, CV_32F);
-    // cv::Mat t2(3, 1, CV_32F);
-    // cv::Mat t3(3, 1, CV_32F);
-    // cv::Mat t4(3, 1, CV_32F);
+
+    double qnorm = 0.0;
+    for(int k=0; k < 4; k++)
+    {
+      qnorm += Q[k]*Q[k];
+    }
+    qnorm = sqrt(qnorm);
+    for(int k=0; k < 4; k++)
+      Q[k] /= qnorm;
 
     Initializer::quat2rot(R1, &Q[0]);
-    // Initializer::quat2rot(R2, &Q[4]);
-    // Initializer::quat2rot(R3, &Q[8]);
-    // Initializer::quat2rot(R4, &Q[12]);
+    R1 = R1.t();
 
     for(int k=0; k < 3; k++)
     {
       t1.at<float>(k,0) = t[k];
-      // t2.at<float>(k,0) = t[k+3];
-      // t3.at<float>(k,0) = t[k+6];
-      // t4.at<float>(k,0) = t[k+9];
     }
 
-    // Reconstruct with the 4 hyphoteses and check
     vector<cv::Point3f> vP3D1;
     vector<bool> vbTriangulated1;
     float parallax1;
@@ -700,9 +681,7 @@ bool Initializer::ReconstructSFM(vector<bool> &vbMatchesInliers, double *Q, doub
 
     int nMinGood = max(static_cast<int>(0.9*N),minTriangulated);
 
-
-    // If there is not a clear winner or not enough triangulated points reject initialization
-    if(nGood1<nMinGood)// || nsimilar>1)
+    if(nGood1<nMinGood)
     {
        std::cout << "Not enough good matches  " << nGood1 << "/" << nMinGood << std::endl;
         return false;

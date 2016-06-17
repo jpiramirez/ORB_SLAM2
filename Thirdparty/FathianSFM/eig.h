@@ -2,13 +2,13 @@
 // Academic License - for use in teaching, academic research, and meeting
 // course requirements at degree granting institutions only.  Not for
 // government, commercial, or other organizational use.
-// File: QuatResidueVer2_0.h
+// File: eig.h
 //
 // MATLAB Coder version            : 2.8
 // C/C++ source code generated on  : 17-Jun-2016 15:28:53
 //
-#ifndef __QUATRESIDUEVER2_0_H__
-#define __QUATRESIDUEVER2_0_H__
+#ifndef __EIG_H__
+#define __EIG_H__
 
 // Include Files
 #include <math.h>
@@ -20,13 +20,12 @@
 #include "CheckInlierVer1_0_types.h"
 
 // Function Declarations
-extern void QuatResidueVer2_0(const double m1[21], const double m2[21], const
-  double qSol[4], double *residu, double C[1225]);
+extern void eig(const double A[16], creal_T V[16], creal_T D[16]);
 
 #endif
 
 //
-// File trailer for QuatResidueVer2_0.h
+// File trailer for eig.h
 //
 // [EOF]
 //
