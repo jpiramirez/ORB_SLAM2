@@ -1,4 +1,7 @@
 # ORB-SLAM2
+
+This is a modified version by [Kaveh Fathian](kaveh.fathian@utdallas) and [Juan-Pablo Ramirez](https://sites.google.com/site/jpramirezparedes/), which uses a different map initialization method not based on the fundamental matrix or homography decomposition.
+
 **Authors:** [Raul Mur-Artal](http://webdiis.unizar.es/~raulmur/), [Juan D. Tardos](http://webdiis.unizar.es/~jdtardos/), [J. M. M. Montiel](http://webdiis.unizar.es/~josemari/) and [Dorian Galvez-Lopez](http://doriangalvez.com/) ([DBoW2](https://github.com/dorian3d/DBoW2))
 
 **Current version:** 1.0.0 
