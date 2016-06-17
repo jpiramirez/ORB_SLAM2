@@ -25,9 +25,14 @@
 #include "Optimizer.h"
 #include "ORBmatcher.h"
 
-#include "Thirdparty/FathianSFM/FathianSFMVer3_0.h"
-#include "Thirdparty/FathianSFM/CheckInlierVer1_0.h"
-#include "Thirdparty/FathianSFM/QuatResidueVer2_0.h"
+// #include "Thirdparty/FathianSFM/FathianSFMVer3_0.h"
+// #include "Thirdparty/FathianSFM/CheckInlierVer1_0.h"
+// #include "Thirdparty/FathianSFM/QuatResidueVer2_0.h"
+#include "Thirdparty/FathianSFM/rt_nonfinite.h"
+#include "Thirdparty/FathianSFM/recoverSFM.h"
+#include "Thirdparty/FathianSFM/recoverSFM_terminate.h"
+#include "Thirdparty/FathianSFM/recoverSFM_emxAPI.h"
+#include "Thirdparty/FathianSFM/recoverSFM_initialize.h"
 
 #include <thread>
 
@@ -101,7 +106,8 @@ bool Initializer::Initialize(const Frame &CurrentFrame, const vector<int> &vMatc
     }
 
     // Launch threads to compute in parallel a fundamental matrix and a homography
-    vector<bool> vbMatchesInliersH, vbMatchesInliersF, vbMatchesInliers;
+    vector<bool> vbMatchesInliersH, vbMatchesInliersF;
+    vector<bool> vbMatchesInliers(N,false);
     float SH, SF, score;
     cv::Mat H, F;
 
@@ -109,7 +115,90 @@ bool Initializer::Initialize(const Frame &CurrentFrame, const vector<int> &vMatc
     double t[3];
 
     std::cout << "Running initializer!" << std::endl;
-    FindFathianSFM(vbMatchesInliers, Q, t, score);
+
+    recoverSFM_initialize();
+
+    // Copying the calibration matrix
+    double Kmat[9];
+    double *dp = (double *)mK.data;
+    Kmat[0] = mK.at<float>(0,0);
+    Kmat[1] = mK.at<float>(1,0);
+    Kmat[2] = mK.at<float>(2,0);
+    Kmat[3] = mK.at<float>(0,1);
+    Kmat[4] = mK.at<float>(1,1);
+    Kmat[5] = mK.at<float>(2,1);
+    Kmat[6] = mK.at<float>(0,2);
+    Kmat[7] = mK.at<float>(1,2);
+    Kmat[8] = mK.at<float>(2,2);
+    for(int i=0; i < 9; i++)
+    {
+
+      std::cout << "K[" << i << "]=" << Kmat[i] << " ";
+    }
+    std::cout << std::endl;
+
+    emxArray_boolean_T *inliers;
+    emxArray_real_T *p1;
+    emxArray_real_T *p2;
+    int T_size[2];
+    double T_data[3];
+    int Q_size[2];
+    double Q_data[4];
+    emxInitArray_boolean_T(&inliers, 2);
+
+    // Initialize function 'recoverSFM' input arguments.
+    // Initialize function input argument 'K'.
+
+    // Initialize function input argument 'p1'.
+    p1 = emxCreate_real_T(3, N);
+
+    // Initialize function input argument 'p2'.
+    p2 = emxCreate_real_T(3, N);
+
+    for(int i=0; i < N; i++)
+    {
+      const cv::KeyPoint &kp1 = mvKeys1[mvMatches12[i].first];
+      const cv::KeyPoint &kp2 = mvKeys2[mvMatches12[i].second];
+
+      p1->data[i*3] = (double)kp1.pt.x;
+      p1->data[i*3+1] = (double)kp1.pt.y;
+      p1->data[i*3+2] = 1.0;
+      // std::cout << "p1(" << p1->data[i*3] << "," << p1->data[i*3+1] << "," << p1->data[i*3+2] << ")" << std::endl;
+      p2->data[i*3] = (double)kp2.pt.x;
+      p2->data[i*3+1] = (double)kp2.pt.y;
+      p2->data[i*3+2] = 1.0;
+    }
+
+    // Call the entry-point 'recoverSFM'.
+    recoverSFM(Kmat, p1, p2, (int)mMaxIterations, 0.8, Q_data, Q_size, T_data, T_size,
+               inliers);
+    std::cout << "(" << inliers->size[0] << "," << inliers->size[1] << ")" << std::endl;
+    std::cout << "P1Size (" << p1->size[0] << "," << p1->size[1] << ")" << std::endl;
+    for(int i=0; i < N; i++)
+    {
+      vbMatchesInliers[i] = (bool)inliers->data[i];
+      std::cout << vbMatchesInliers[i];
+    }
+    std::cout << std::endl;
+
+    emxDestroyArray_boolean_T(inliers);
+    emxDestroyArray_real_T(p2);
+    emxDestroyArray_real_T(p1);
+
+    std::cout << "quaternion (";
+    for(int i=0; i < 3; i++)
+    {
+      Q[i] = Q_data[i];
+      std::cout << Q[i] << ",";
+      t[i] = T_data[i];
+    }
+    Q[3] = Q_data[3];
+    std::cout << Q[3] << ")";
+    std::cout << std::endl;
+
+    recoverSFM_terminate();
+
+    // FindFathianSFM(vbMatchesInliers, Q, t, score);
 
     // thread threadH(&Initializer::FindHomography,this,ref(vbMatchesInliersH), ref(SH), ref(H));
     // thread threadF(&Initializer::FindFundamental,this,ref(vbMatchesInliersF), ref(SF), ref(F));
@@ -194,7 +283,7 @@ void Initializer::FindFathianSFM(vector<bool> &vbMatchesInliers, double *Q, doub
       m2[j*3+1] = IK.at<float>(1,0)*u2+IK.at<float>(1,1)*v2+IK.at<float>(1,2);
       m2[j*3+2] = IK.at<float>(2,0)*u2+IK.at<float>(2,1)*v2+IK.at<float>(2,2);
     }
-    FathianSFMVer3_0(m1, m2, qBest, tBest, &resBest);
+    // FathianSFMVer3_0(m1, m2, qBest, tBest, &resBest);
     std::cout << "RES: " << resBest << std::endl;
 
     currentScore = CheckFathianSFM(qBest, vbCurrentInliers, mSigma, m1, m2, &resBest);
@@ -626,7 +715,7 @@ float Initializer::CheckFathianSFM(const double *qSolBest, vector<bool> &vbMatch
       m2Check[2] = IK.at<float>(2,0)*u2+IK.at<float>(2,1)*v2+IK.at<float>(2,2);
 
 
-      CheckInlierVer1_0(qSolBest, m1Orig, m2Orig, m1Check, m2Check, &residu, rs);
+      // CheckInlierVer1_0(qSolBest, m1Orig, m2Orig, m1Check, m2Check, &residu, rs);
       residu = std::abs(residu);
       std::cout << "Residu " << residu << std::endl;
 
@@ -674,7 +763,7 @@ bool Initializer::ReconstructSFM(vector<bool> &vbMatchesInliers, double *Q, doub
     // cv::Mat t3(3, 1, CV_32F);
     // cv::Mat t4(3, 1, CV_32F);
 
-    Initializer::quat2rot(R1, &Q[0]);
+    Initializer::quat2rot(R1, Q);
     // Initializer::quat2rot(R2, &Q[4]);
     // Initializer::quat2rot(R3, &Q[8]);
     // Initializer::quat2rot(R4, &Q[12]);
