@@ -25,7 +25,11 @@
 #include "Optimizer.h"
 #include "ORBmatcher.h"
 
-#include<thread>
+#include "Thirdparty/FathianSFM/FathianSFMVer3_0.h"
+#include "Thirdparty/FathianSFM/CheckInlierVer1_0.h"
+#include "Thirdparty/FathianSFM/QuatResidueVer2_0.h"
+
+#include <thread>
 
 namespace ORB_SLAM2
 {
@@ -97,28 +101,134 @@ bool Initializer::Initialize(const Frame &CurrentFrame, const vector<int> &vMatc
     }
 
     // Launch threads to compute in parallel a fundamental matrix and a homography
-    vector<bool> vbMatchesInliersH, vbMatchesInliersF;
-    float SH, SF;
+    vector<bool> vbMatchesInliersH, vbMatchesInliersF, vbMatchesInliers;
+    float SH, SF, score;
     cv::Mat H, F;
 
-    thread threadH(&Initializer::FindHomography,this,ref(vbMatchesInliersH), ref(SH), ref(H));
-    thread threadF(&Initializer::FindFundamental,this,ref(vbMatchesInliersF), ref(SF), ref(F));
+    double Q[4];
+    double t[3];
 
-    // Wait until both threads have finished
-    threadH.join();
-    threadF.join();
+    std::cout << "Running initializer!" << std::endl;
+    FindFathianSFM(vbMatchesInliers, Q, t, score);
 
-    // Compute ratio of scores
-    float RH = SH/(SH+SF);
+    // thread threadH(&Initializer::FindHomography,this,ref(vbMatchesInliersH), ref(SH), ref(H));
+    // thread threadF(&Initializer::FindFundamental,this,ref(vbMatchesInliersF), ref(SF), ref(F));
+    //
+    // // Wait until both threads have finished
+    // threadH.join();
+    // threadF.join();
+    //
+    // // Compute ratio of scores
+    // float RH = SH/(SH+SF);
+    //
+    // // Try to reconstruct from homography or fundamental depending on the ratio (0.40-0.45)
+    // if(RH>0.40)
+    //     return ReconstructH(vbMatchesInliersH,H,mK,R21,t21,vP3D,vbTriangulated,1.0,50);
+    // else //if(pF_HF>0.6)
+    //     return ReconstructF(vbMatchesInliersF,F,mK,R21,t21,vP3D,vbTriangulated,1.0,50);
+    std::cout << "MScore: " << score << "/" << mvMatches12.size() << std::endl;
 
-    // Try to reconstruct from homography or fundamental depending on the ratio (0.40-0.45)
-    if(RH>0.40)
-        return ReconstructH(vbMatchesInliersH,H,mK,R21,t21,vP3D,vbTriangulated,1.0,50);
-    else //if(pF_HF>0.6)
-        return ReconstructF(vbMatchesInliersF,F,mK,R21,t21,vP3D,vbTriangulated,1.0,50);
+    bool initvar = ReconstructSFM(vbMatchesInliers, Q, t, mK, R21, t21, vP3D, vbTriangulated, 1.0, 50);
+    if(initvar)
+      std::cout << "Initializing..." << std::endl;
+    return initvar;
 
     return false;
 }
+
+void Initializer::FindFathianSFM(vector<bool> &vbMatchesInliers, double *Q, double *t, float &score)
+{
+  double m1[21];
+  double m2[21];
+  double qBest[4];
+  double tBest[3];
+  double resBest;
+  // Number of putative matches
+  const int N = mvMatches12.size();
+  // const int N = vbMatchesInliers.size();
+
+  cv::Mat IK = mK.inv();
+
+  // Normalize coordinates
+  vector<cv::Point2f> vPn1, vPn2;
+  // cv::Mat T1, T2;
+  // Normalize(mvKeys1,vPn1, T1);
+  // Normalize(mvKeys2,vPn2, T2);
+  // cv::Mat T2t = T2.t();
+
+  // Best Results variables
+  score = 0.0;
+  vbMatchesInliers = vector<bool>(N,false);
+
+  // Iteration variables
+  vector<cv::Point2f> vPn1i(7);
+  vector<cv::Point2f> vPn2i(7);
+  cv::Mat F21i;
+  vector<bool> vbCurrentInliers(N,false);
+  float currentScore;
+
+  // Perform all RANSAC iterations and save the solution with highest score
+  for(int it=0; it<mMaxIterations; it++)
+  {
+    // Select a minimum set
+    for(int j=0; j<7; j++)
+    {
+      int idx = mvSets[it][j];
+
+      // vPn1i[j] = vPn1[mvMatches12[idx].first];
+      // vPn2i[j] = vPn2[mvMatches12[idx].second];
+      // vPn1i[j] = mvKeys1[mvMatches12[idx].first];
+      // vPn2i[j] = mvKeys2[mvMatches12[idx].second];
+      const cv::KeyPoint &kp1 = mvKeys1[mvMatches12[idx].first];
+      const cv::KeyPoint &kp2 = mvKeys2[mvMatches12[idx].second];
+
+      const float u1 = kp1.pt.x;
+      const float v1 = kp1.pt.y;
+      const float u2 = kp2.pt.x;
+      const float v2 = kp2.pt.y;
+
+      m1[j*3] = IK.at<float>(0,0)*u1+IK.at<float>(0,1)*v1+IK.at<float>(0,2);
+      m1[j*3+1] = IK.at<float>(1,0)*u1+IK.at<float>(1,1)*v1+IK.at<float>(1,2);
+      m1[j*3+2] = IK.at<float>(2,0)*u1+IK.at<float>(2,1)*v1+IK.at<float>(2,2);
+      m2[j*3] = IK.at<float>(0,0)*u2+IK.at<float>(0,1)*v2+IK.at<float>(0,2);
+      m2[j*3+1] = IK.at<float>(1,0)*u2+IK.at<float>(1,1)*v2+IK.at<float>(1,2);
+      m2[j*3+2] = IK.at<float>(2,0)*u2+IK.at<float>(2,1)*v2+IK.at<float>(2,2);
+    }
+    FathianSFMVer3_0(m1, m2, qBest, tBest, &resBest);
+    std::cout << "RES: " << resBest << std::endl;
+
+    currentScore = CheckFathianSFM(qBest, vbCurrentInliers, mSigma, m1, m2, &resBest);
+    // cv::Mat Rm(3, 3, CV_32F);
+    // cv::Mat Tm(3, 3, CV_32F);
+    // Tm.at<float>(0,0) = 0;
+    // Tm.at<float>(0,1) = -tBest[2];
+    // Tm.at<float>(0,2) = tBest[1];
+    // Tm.at<float>(1,0) = tBest[2];
+    // Tm.at<float>(1,1) = 0.0;
+    // Tm.at<float>(1,2) = -tBest[0];
+    // Tm.at<float>(2,0) = -tBest[1];
+    // Tm.at<float>(2,1) = tBest[0];
+    // Tm.at<float>(2,2) = 0.0;
+    // Initializer::quat2rot(Rm, qBest);
+    // cv::Mat E = Rm*Tm;
+    // currentScore = CheckFundamental(IK.t()*E*IK, vbMatchesInliers, mSigma);
+
+    if(currentScore>score)
+    {
+      for(int k=0; k < 3; k++)
+      {
+        Q[k] = qBest[k];
+        t[k] = tBest[k];
+      }
+      Q[3] = qBest[3];
+      vbMatchesInliers = vbCurrentInliers;
+      score = currentScore;
+    }
+    std::cout << "CSCORE: " << currentScore << "/" << N << std::endl;
+  }
+  std::cout << "TOPSCORE: " << score << "/" << N << std::endl;
+}
+
 
 
 void Initializer::FindHomography(vector<bool> &vbMatchesInliers, float &score, cv::Mat &H21)
@@ -303,7 +413,7 @@ cv::Mat Initializer::ComputeF21(const vector<cv::Point2f> &vP1,const vector<cv::
 }
 
 float Initializer::CheckHomography(const cv::Mat &H21, const cv::Mat &H12, vector<bool> &vbMatchesInliers, float sigma)
-{   
+{
     const int N = mvMatches12.size();
 
     const float h11 = H21.at<float>(0,0);
@@ -467,6 +577,153 @@ float Initializer::CheckFundamental(const cv::Mat &F21, vector<bool> &vbMatchesI
     return score;
 }
 
+float Initializer::CheckFathianSFM(const double *qSolBest, vector<bool> &vbMatchesInliers, float sigma, const double *m1Orig, const double *m2Orig, double *residues)
+{
+  const int N = mvMatches12.size();
+
+  vbMatchesInliers.resize(N);
+
+  float score = 0;
+  cv::Mat IK = mK.inv();
+
+  const float th = 5.991;
+
+  const float invSigmaSquare = 1.0/(sigma*sigma);
+
+  double minres = 1e100;
+  double maxres = 0.0;
+  double threshold = (double)(*residues);
+  double rs[10];
+  double residu = 0.0;
+  // CheckInlierVer1_0(qSolBest, m1Orig, m2Orig, m1Orig, m2Orig, &threshold, rs);
+  double C[1225];
+  // QuatResidueVer2_0(m1Orig, m2Orig, qSolBest, &threshold, C);
+  threshold = std::abs(threshold);
+
+  for(int i=0; i<N; i++)
+  {
+      bool bIn = true;
+
+      const cv::KeyPoint &kp1 = mvKeys1[mvMatches12[i].first];
+      const cv::KeyPoint &kp2 = mvKeys2[mvMatches12[i].second];
+
+      const float u1 = kp1.pt.x;
+      const float v1 = kp1.pt.y;
+      const float u2 = kp2.pt.x;
+      const float v2 = kp2.pt.y;
+
+      // Reprojection error
+
+
+      double m1Check[3];
+      double m2Check[3];
+
+      m1Check[0] = IK.at<float>(0,0)*u1+IK.at<float>(0,1)*v1+IK.at<float>(0,2);
+      m1Check[1] = IK.at<float>(1,0)*u1+IK.at<float>(1,1)*v1+IK.at<float>(1,2);
+      m1Check[2] = IK.at<float>(2,0)*u1+IK.at<float>(2,1)*v1+IK.at<float>(2,2);
+      m2Check[0] = IK.at<float>(0,0)*u2+IK.at<float>(0,1)*v2+IK.at<float>(0,2);
+      m2Check[1] = IK.at<float>(1,0)*u2+IK.at<float>(1,1)*v2+IK.at<float>(1,2);
+      m2Check[2] = IK.at<float>(2,0)*u2+IK.at<float>(2,1)*v2+IK.at<float>(2,2);
+
+
+      CheckInlierVer1_0(qSolBest, m1Orig, m2Orig, m1Check, m2Check, &residu, rs);
+      residu = std::abs(residu);
+      std::cout << "Residu " << residu << std::endl;
+
+      if(residu > threshold)// || threshold > 1e-6)
+          bIn = false;
+      else
+          score += 1.0;
+
+      if(residu < minres)
+        minres = residu;
+
+      if(residu > maxres)
+        maxres = residu;
+
+      // std::cout << "Residue: " << residu << "   Prev res: " << *residues;
+
+      if(bIn){
+          vbMatchesInliers[i]=true;
+          // std::cout << "   INLIER" << std::endl;
+        }
+      else{
+          vbMatchesInliers[i]=false;
+          // std::cout << "   OUTLIER" << std::endl;
+        }
+  }
+
+  std::cout << "Maxres: " << maxres << "  Minres: " << minres << "  Bestres: " << threshold << std::endl;
+  return score;
+}
+
+bool Initializer::ReconstructSFM(vector<bool> &vbMatchesInliers, double *Q, double *t, cv::Mat &K,
+                            cv::Mat &R21, cv::Mat &t21, vector<cv::Point3f> &vP3D, vector<bool> &vbTriangulated, float minParallax, int minTriangulated)
+{
+    int N=0;
+    for(size_t i=0, iend = vbMatchesInliers.size() ; i<iend; i++)
+        if(vbMatchesInliers[i])
+            N++;
+
+    cv::Mat R1(3,3,CV_32F);
+    // cv::Mat R2(3,3,CV_32F);
+    // cv::Mat R3(3,3,CV_32F);
+    // cv::Mat R4(3,3,CV_32F);
+    cv::Mat t1(3, 1, CV_32F);
+    // cv::Mat t2(3, 1, CV_32F);
+    // cv::Mat t3(3, 1, CV_32F);
+    // cv::Mat t4(3, 1, CV_32F);
+
+    Initializer::quat2rot(R1, &Q[0]);
+    // Initializer::quat2rot(R2, &Q[4]);
+    // Initializer::quat2rot(R3, &Q[8]);
+    // Initializer::quat2rot(R4, &Q[12]);
+
+    for(int k=0; k < 3; k++)
+    {
+      t1.at<float>(k,0) = t[k];
+      // t2.at<float>(k,0) = t[k+3];
+      // t3.at<float>(k,0) = t[k+6];
+      // t4.at<float>(k,0) = t[k+9];
+    }
+
+    // Reconstruct with the 4 hyphoteses and check
+    vector<cv::Point3f> vP3D1;
+    vector<bool> vbTriangulated1;
+    float parallax1;
+
+    int nGood1 = CheckRT(R1,t1,mvKeys1,mvKeys2,mvMatches12,vbMatchesInliers,K, vP3D1, 4.0*mSigma2, vbTriangulated1, parallax1);
+
+
+    R21 = cv::Mat();
+    t21 = cv::Mat();
+
+    int nMinGood = max(static_cast<int>(0.9*N),minTriangulated);
+
+
+    // If there is not a clear winner or not enough triangulated points reject initialization
+    if(nGood1<nMinGood)// || nsimilar>1)
+    {
+       std::cout << "Not enough good matches  " << nGood1 << "/" << nMinGood << std::endl;
+        return false;
+    }
+
+    // If best reconstruction has enough parallax initialize
+    if(parallax1>minParallax)
+      {
+          vP3D = vP3D1;
+          vbTriangulated = vbTriangulated1;
+
+          R1.copyTo(R21);
+          t1.copyTo(t21);
+          return true;
+      }
+
+    std::cout << "Not enough parallax" << std::endl;
+    return false;
+}
+
+
 bool Initializer::ReconstructF(vector<bool> &vbMatchesInliers, cv::Mat &F21, cv::Mat &K,
                             cv::Mat &R21, cv::Mat &t21, vector<cv::Point3f> &vP3D, vector<bool> &vbTriangulated, float minParallax, int minTriangulated)
 {
@@ -481,7 +738,7 @@ bool Initializer::ReconstructF(vector<bool> &vbMatchesInliers, cv::Mat &F21, cv:
     cv::Mat R1, R2, t;
 
     // Recover the 4 motion hypotheses
-    DecomposeE(E21,R1,R2,t);  
+    DecomposeE(E21,R1,R2,t);
 
     cv::Mat t1=t;
     cv::Mat t2=-t;
@@ -687,7 +944,7 @@ bool Initializer::ReconstructH(vector<bool> &vbMatchesInliers, cv::Mat &H21, cv:
 
 
     int bestGood = 0;
-    int secondBestGood = 0;    
+    int secondBestGood = 0;
     int bestSolutionIdx = -1;
     float bestParallax = -1;
     vector<cv::Point3f> bestP3D;

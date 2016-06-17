@@ -69,6 +69,9 @@ ${EIGEN3_LIBS}
 ${Pangolin_LIBRARIES}
 ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
 ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
+${PROJECT_SOURCE_DIR}/Thirdparty/FathianSFM/libFathianSFM.a
+${PROJECT_SOURCE_DIR}/Thirdparty/FathianSFM/libCheckInlier.a
+${PROJECT_SOURCE_DIR}/Thirdparty/FathianSFM/libQuatResidue.a
 )
 
 # Build examples
@@ -94,4 +97,3 @@ target_link_libraries(mono_tum ${PROJECT_NAME})
 add_executable(mono_kitti
 Examples/Monocular/mono_kitti.cc)
 target_link_libraries(mono_kitti ${PROJECT_NAME})
-

@@ -47,6 +47,7 @@ private:
 
     void FindHomography(vector<bool> &vbMatchesInliers, float &score, cv::Mat &H21);
     void FindFundamental(vector<bool> &vbInliers, float &score, cv::Mat &F21);
+    void FindFathianSFM(vector<bool> &vbMatchesInliers, double *Q, double *t, float &score);
 
     cv::Mat ComputeH21(const vector<cv::Point2f> &vP1, const vector<cv::Point2f> &vP2);
     cv::Mat ComputeF21(const vector<cv::Point2f> &vP1, const vector<cv::Point2f> &vP2);
@@ -54,12 +55,16 @@ private:
     float CheckHomography(const cv::Mat &H21, const cv::Mat &H12, vector<bool> &vbMatchesInliers, float sigma);
 
     float CheckFundamental(const cv::Mat &F21, vector<bool> &vbMatchesInliers, float sigma);
+    float CheckFathianSFM(const double *qSolBest, vector<bool> &vbMatchesInliers, float sigma, const double *m1Orig, const double *m2Orig, double *residues);
 
     bool ReconstructF(vector<bool> &vbMatchesInliers, cv::Mat &F21, cv::Mat &K,
                       cv::Mat &R21, cv::Mat &t21, vector<cv::Point3f> &vP3D, vector<bool> &vbTriangulated, float minParallax, int minTriangulated);
 
     bool ReconstructH(vector<bool> &vbMatchesInliers, cv::Mat &H21, cv::Mat &K,
                       cv::Mat &R21, cv::Mat &t21, vector<cv::Point3f> &vP3D, vector<bool> &vbTriangulated, float minParallax, int minTriangulated);
+
+    bool ReconstructSFM(vector<bool> &vbMatchesInliers, double *Q, double *t, cv::Mat &K,
+                                cv::Mat &R21, cv::Mat &t21, vector<cv::Point3f> &vP3D, vector<bool> &vbTriangulated, float minParallax, int minTriangulated);
 
     void Triangulate(const cv::KeyPoint &kp1, const cv::KeyPoint &kp2, const cv::Mat &P1, const cv::Mat &P2, cv::Mat &x3D);
 
@@ -92,7 +97,20 @@ private:
     int mMaxIterations;
 
     // Ransac sets
-    vector<vector<size_t> > mvSets;   
+    vector<vector<size_t> > mvSets;
+
+    void quat2rot(cv::Mat &R, double *q)
+    {
+      R.at<float>(0,0) = 1-2*q[2]*q[2]-2*q[3]*q[3];
+      R.at<float>(0,1) = 2*q[1]*q[2]+2*q[1]*q[3];
+      R.at<float>(0,2) = 2*q[1]*q[3]-2*q[0]*q[2];
+      R.at<float>(1,0) = 2*q[1]*q[2]-2*q[0]*q[3];
+      R.at<float>(1,1) = 1.0 - 2*q[1]*q[1]-2*q[3]*q[3];
+      R.at<float>(1,2) = 2*q[2]*q[3]+2*q[0]*q[1];
+      R.at<float>(2,0) = 2*q[1]*q[3]+2*q[0]*q[2];
+      R.at<float>(2,1) = 2*q[2]*q[3]-2*q[0]*q[1];
+      R.at<float>(2,2) = 1.0-2*q[1]*q[1]-2*q[2]*q[2];
+    }
 
 };
 
