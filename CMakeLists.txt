@@ -27,6 +27,7 @@ else()
 endif()
 
 LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake_modules)
+LIST(APPEND CMAKE_MODULE_PATH /usr/local/lib/cmake/Pangolin)
 
 find_package(OpenCV 2.4.3 REQUIRED)
 find_package(Eigen3 3.1.0 REQUIRED)
@@ -63,14 +64,29 @@ src/Initializer.cc
 src/Viewer.cc
 )
 
-target_link_libraries(${PROJECT_NAME}
-${OpenCV_LIBS}
-${EIGEN3_LIBS}
-${Pangolin_LIBRARIES}
-${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
-${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
-${PROJECT_SOURCE_DIR}/Thirdparty/FathianSFM/libFathianSFM.so
-)
+IF(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+	target_link_libraries(${PROJECT_NAME}
+		${OpenCV_LIBS}
+		${EIGEN3_LIBS}
+		${Pangolin_LIBRARIES}
+		${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.dylib
+		${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.dylib
+		${PROJECT_SOURCE_DIR}/Thirdparty/FathianSFM/lib/libFathianSFM.dylib
+	)
+ELSE(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+	IF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+    	target_link_libraries(${PROJECT_NAME}
+			${OpenCV_LIBS}
+			${EIGEN3_LIBS}
+			${Pangolin_LIBRARIES}
+			${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
+			${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
+			${PROJECT_SOURCE_DIR}/Thirdparty/FathianSFM/lib/libFathianSFM.so
+		)
+	ENDIF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+ENDIF(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+
+
 
 # Build examples
 
