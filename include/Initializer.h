@@ -36,6 +36,7 @@ public:
 
     // Fix the reference frame
     Initializer(const Frame &ReferenceFrame, float sigma = 1.0, int iterations = 200);
+    ~Initializer();
 
     // Computes in parallel a fundamental matrix and a homography
     // Selects a model and tries to recover the motion and the structure from motion
@@ -111,6 +112,8 @@ private:
       R.at<float>(2,1) = 2*q[2]*q[3]-2*q[0]*q[1];
       R.at<float>(2,2) = 1.0-2*q[1]*q[1]-2*q[2]*q[2];
     }
+
+    ofstream logfile;
 
 };
 

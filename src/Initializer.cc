@@ -46,6 +46,12 @@ Initializer::Initializer(const Frame &ReferenceFrame, float sigma, int iteration
     mSigma = sigma;
     mSigma2 = sigma*sigma;
     mMaxIterations = iterations;
+    logfile.open("log.txt");
+}
+
+Initializer::~Initializer()
+{
+	logfile.close();
 }
 
 bool Initializer::Initialize(const Frame &CurrentFrame, const vector<int> &vMatches12, cv::Mat &R21, cv::Mat &t21,
@@ -117,23 +123,24 @@ bool Initializer::Initialize(const Frame &CurrentFrame, const vector<int> &vMatc
     CheckInlierVer1_0_terminate();
 
     /////////////////////////////////////////////////////////////
-    // Uncomment to use the original SFM code from ORBSLAM
-
-    // thread threadH(&Initializer::FindHomography,this,ref(vbMatchesInliersH), ref(SH), ref(H));
-    // thread threadF(&Initializer::FindFundamental,this,ref(vbMatchesInliersF), ref(SF), ref(F));
-    //
-    // // Wait until both threads have finished
-    // threadH.join();
-    // threadF.join();
-    //
-    // // Compute ratio of scores
-    // float RH = SH/(SH+SF);
-    //
-    // // Try to reconstruct from homography or fundamental depending on the ratio (0.40-0.45)
-    // if(RH>0.40)
-    //     return ReconstructH(vbMatchesInliersH,H,mK,R21,t21,vP3D,vbTriangulated,1.0,50);
-    // else //if(pF_HF>0.6)
-    //     return ReconstructF(vbMatchesInliersF,F,mK,R21,t21,vP3D,vbTriangulated,1.0,50);
+//     Uncomment to use the original SFM code from ORBSLAM
+//
+//     thread threadH(&Initializer::FindHomography,this,ref(vbMatchesInliersH), ref(SH), ref(H));
+//     thread threadF(&Initializer::FindFundamental,this,ref(vbMatchesInliersF), ref(SF), ref(F));
+//
+//     // Wait until both threads have finished
+//     threadH.join();
+//     threadF.join();
+//
+//     // Compute ratio of scores
+//     float RH = SH/(SH+SF);
+//     bool initvar = false;
+//
+//     // Try to reconstruct from homography or fundamental depending on the ratio (0.40-0.45)
+//     if(RH>0.40)
+//         initvar = ReconstructH(vbMatchesInliersH,H,mK,R21,t21,vP3D,vbTriangulated,1.0,50);
+//     else //if(pF_HF>0.6)
+//         initvar = ReconstructF(vbMatchesInliersF,F,mK,R21,t21,vP3D,vbTriangulated,1.0,50);
     //////////////////////////////////////////////////////////////////
 
     std::cout << "MScore: " << score << "/" << mvMatches12.size() << std::endl;
@@ -141,6 +148,12 @@ bool Initializer::Initialize(const Frame &CurrentFrame, const vector<int> &vMatc
     bool initvar = ReconstructSFM(vbMatchesInliers, Q, t, mK, R21, t21, vP3D, vbTriangulated, 1.0, 50);
     if(initvar)
       std::cout << "Initializing..." << std::endl;
+
+    cout << "Rotation matrix" << endl;
+    cout << R21;
+    cout << "Translation vector" << endl;
+    cout << t21;
+//    logfile << t[0] << " " << t[1] << " " << t[2] << " " << Q[0] << " " << Q[1] << " " << Q[2] << " " << Q[3] << endl;
     return initvar;
 
     return false;
@@ -614,7 +627,7 @@ float Initializer::CheckFathianSFM(const double *qSolBest, vector<bool> &vbMatch
       residu = std::abs(residu);
       // std::cout << "Residu " << residu << std::endl;
 
-      if(residu > threshold)
+      if(residu > 0.8*threshold)
           bIn = false;
       else
           score += 1.0;
@@ -652,14 +665,21 @@ bool Initializer::ReconstructSFM(vector<bool> &vbMatchesInliers, double *Q, doub
     cv::Mat R1(3,3,CV_32F);
     cv::Mat t1(3, 1, CV_32F);
 
-    double qnorm = 0.0;
-    for(int k=0; k < 4; k++)
+    double qnorm = 0.0, tnorm = 0.0;
+    for(int k=0; k < 3; k++)
     {
       qnorm += Q[k]*Q[k];
+      tnorm += t[k]*t[k];
     }
+    qnorm += Q[3]*Q[3];
     qnorm = sqrt(qnorm);
-    for(int k=0; k < 4; k++)
+    tnorm = sqrt(tnorm);
+    for(int k=0; k < 3; k++)
+    {
       Q[k] /= qnorm;
+      t[k] /= tnorm;
+    }
+    Q[3] /= qnorm;
 
     Initializer::quat2rot(R1, &Q[0]);
     R1 = R1.t();
@@ -668,6 +688,7 @@ bool Initializer::ReconstructSFM(vector<bool> &vbMatchesInliers, double *Q, doub
     {
       t1.at<float>(k,0) = t[k];
     }
+    t1 = -R1*t1;
 
     vector<cv::Point3f> vP3D1;
     vector<bool> vbTriangulated1;
